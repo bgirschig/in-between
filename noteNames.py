@@ -1,41 +1,85 @@
 import re
 import math
 
-noteMap = {
-  'en': ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"],
-  'fr': ["do", "do#", "re", "re#", "mi", "fa", "fa#", "sol", "sol#", "la", "la#", "si"],
-}
+# Map from a midi note index (within one octave: from 0 to 12)
+# to a 'base' note index (from 0 to 6, for the seven 'base' notes in an octave).
+# The second item in the tuple defines wether this note is the 'sharp' version of the given index
+noteMap = [
+  (0, False), (0, True), # C
+  (1, False), (1, True), # D
+  (2, False),            # E
+  (3, False), (3, True), # F
+  (4, False), (4, True), # G
+  (5, False), (5, True), # A
+  (6, False),            # B
+]
+# Map from a base note index to the corresponding midi note index
+reverseNoteMap = [0, 2, 4, 5, 7, 9, 11]
+# Map from a base note index to a note name
+noteNames = ["C", "D", "E", "F", "G", "A", "B"]
+# Map between accidentals and the offset they put on the note they affect
+accidentalMap = { '#': 1, '': 0, 'b': -1 }
 
-accidentalMap = {
-  '#': 1,
-  'b': -1,
-  '': 0
-}
+""" Stores information about a music note
+In order to preserve information about accidentals (C# != Db), the note data is stored internlly as:
+- A 'note' (0 to 6)
+- An 'octave'
+- An accidental ('#', 'b' or '')
+"""
+class Note:
+  """ Create a Note object, either from a note 'id' or a midi note.
 
-# Ableton midi notes start at C2
-# https://forum.ableton.com/viewtopic.php?t=228596
-OCTAVE_OFFSET = 2
+  One and only one of noteId OR midiNote must be set
 
-def noteFromName(noteId, lang='en'):
-  noteName, accidental, octave = re.search(r"^([A-Z])([#b]?)(\d{,2})$", noteId).groups()
-  octave = (OCTAVE_OFFSET + int(octave)) if octave else 4
-  return 12*octave + noteMap[lang].index(noteName) + accidentalMap[accidental]
+  Args:
+    noteId (str): A string representation of the note, eg. C4, D#2, F, etc...
+    midiNote(int): The midi note, according to the midi standard (12=C0, 60=C4)
+    octave_offset(int): Some software (ie. Ableton) add an offset to the midi notes. Use this to
+    compensate that offset. This only affects string parsing and representations
+  """
+  def __init__(self, noteId:str=None, midiNote:int=None, octave_offset:int=1):
+    if noteId is None and midiNote is None:
+      raise ValueError("Note constructor requires one of 'noteId' or midiNote'")
+    if noteId and midiNote:
+      raise ValueError("Note constructor received conflicting arguments: 'noteId' and midiNote'."
+        + " please only use one")
 
-def nameFromNote(noteIdx, lang='en'):
-  octave = noteIdx//12 - OCTAVE_OFFSET
-  note = noteMap[lang][noteIdx%12]
-  return f"{note}{octave}"
+    self.octave_offset = octave_offset
+    self.note = 0 # C (0 to 7)
+    self.accidental = '' # ('#', 'b' or '')
+    self.octave = 4 # middle octave
 
-def toNote(val, lang='en'):
-  if type(val) == str:
-    try:
-      return int(val)
-    except:
-      return noteFromName(val, lang)
-  elif type(val) == int: return val
-  else: return None
+    if noteId is not None:
+      # noteId: B#2, Fb4, G3, C, ...
+      noteName, accidental, octave = re.search(r"^([A-Z])([#b]?)(-?\d{,2})$", noteId).groups()
+      self.octave = int(octave) + self.octave_offset if octave else 4
+      self.accidental = accidental
+      self.note = noteNames.index(noteName)
+    elif midiNote is not None:
+      idxInOctave = midiNote%12
+      noteInfo = noteMap[idxInOctave]
+      self.note = noteInfo[0]
+      self.octave = math.floor(midiNote/12) - 1 # midi octaves start at -1
+      self.accidental = "#" if noteInfo[1] else ''
 
-def toName(val, lang='en'):
-  if type(val) == str: return val
-  elif type(val) == int: return nameFromNote(val, lang)
-  else: return None
+  def get_noteIdxInOctave(self):
+    return reverseNoteMap[self.note]
+  noteIdxInOctave = property(get_noteIdxInOctave)
+
+  def get_midiNote(self):
+    return 12*(self.octave+1) + self.noteIdxInOctave + accidentalMap[self.accidental]
+  midiNote = property(get_midiNote)
+
+  def __repr__(self):
+    noteName = noteNames[self.note]
+    return f"{noteName}{self.accidental}{self.octave-self.octave_offset}"
+
+  @staticmethod
+  def makeFromUnknown(val, **kwargs):
+    if (type(val) == int):
+      return Note(midiNote=val, **kwargs)
+    else:
+      try:
+        return Note(midiNote=int(val))
+      except Exception as e:
+        return Note(noteId=val)

@@ -9,7 +9,7 @@ import os
 import subprocess
 from terminaltables import AsciiTable
 from colors import colors
-import noteNames
+from noteNames import Note
 
 parser = argparse.ArgumentParser(description="transfer midi events through the network, to control stuff")
 parser.add_argument("--server", default="localhost", help="host address. only required for client (default: localhost)")
@@ -29,15 +29,16 @@ def main():
   # Extract the pin-map
   pinMap = {}
   pinStates = {}
+  noteLabels = []
   for item in args.pins:
     note, pin = [val for val in item.split(",")]
     
     pin = int(pin)
-    note = noteNames.toNote(note)
+    note = Note.makeFromUnknown(note, octave_offset=1)
     
-    pinMap[note] = pin
+    pinMap[note.midiNote] = pin
     pinStates[pin] = 0
-  noteLabels = [f"{noteNames.nameFromNote(val)} ({val})" for val in list(pinMap.keys())]
+    noteLabels.append(f"{note} ({note.midiNote})")
 
   # Setup connection to server
   context = zmq.Context()
