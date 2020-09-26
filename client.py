@@ -1,6 +1,7 @@
 import sys
 import zmq
 from rtmidi.midiconstants import NOTE_ON, NOTE_OFF
+import rtmidi
 import argparse
 from gpiozero import OutputDevice
 import logging
@@ -8,6 +9,7 @@ import os
 import subprocess
 from terminaltables import AsciiTable
 from colors import colors
+import noteNames
 
 parser = argparse.ArgumentParser(description="transfer midi events through the network, to control stuff")
 parser.add_argument("--server", default="localhost", help="host address. only required for client (default: localhost)")
@@ -22,17 +24,20 @@ logger = logging.getLogger('in-between client')
 logging.basicConfig(level=args.log_level)
 
 def main():
-  global pinMap, pinStates, notesList, serverUrl
+  global pinMap, pinStates, noteLabels, serverUrl
 
   # Extract the pin-map
   pinMap = {}
-  notesList = {}
   pinStates = {}
   for item in args.pins:
-    note, pin = [int(val) for val in item.split(",")]
+    note, pin = [val for val in item.split(",")]
+    
+    pin = int(pin)
+    note = noteNames.toNote(note)
+    
     pinMap[note] = pin
     pinStates[pin] = 0
-  notesList = list(pinMap.keys())
+  noteLabels = [f"{noteNames.nameFromNote(val)} ({val})" for val in list(pinMap.keys())]
 
   # Setup connection to server
   context = zmq.Context()
@@ -81,7 +86,7 @@ def handleNote(eventType, note, velocity):
 def updateDisplay():
   clear()
   table = AsciiTable([
-    ['note']+notesList,
+    ['note']+noteLabels,
     ['pin']+[pin for pin in pinMap.values()],
     ['status']+[getPinStatus(pin) for pin in pinMap.values()]
   ])
