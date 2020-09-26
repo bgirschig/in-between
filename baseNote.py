@@ -26,7 +26,7 @@ In order to preserve information about accidentals (C# != Db), the note data is 
 - An 'octave'
 - An accidental ('#', 'b' or '')
 """
-class Note:
+class BaseNote:
   """ Create a Note object, either from a note 'id' or a midi note.
 
   One and only one of noteId OR midiNote must be set
@@ -35,9 +35,10 @@ class Note:
     noteId (str): A string representation of the note, eg. C4, D#2, F, etc...
     midiNote(int): The midi note, according to the midi standard (12=C0, 60=C4)
     octave_offset(int): Some software (ie. Ableton) add an offset to the midi notes. Use this to
-    compensate that offset. This only affects string parsing and representations
+      compensate that offset. This only affects string parsing and representations
+    duration(float): This is not used in the base class, but may be in inheriting classes
   """
-  def __init__(self, noteId:str=None, midiNote:int=None, octave_offset:int=1):
+  def __init__(self, noteId:str=None, midiNote:int=None, octave_offset:int=0, duration:float=None):
     if noteId is None and midiNote is None:
       raise ValueError("Note constructor requires one of 'noteId' or midiNote'")
     if noteId and midiNote:
@@ -47,39 +48,48 @@ class Note:
     self.octave_offset = octave_offset
     self.note = 0 # C (0 to 7)
     self.accidental = '' # ('#', 'b' or '')
-    self.octave = 4 # middle octave
+    self.midi_octave = 4 # middle octave
+    self.duration = duration # quarted note
 
     if noteId is not None:
       # noteId: B#2, Fb4, G3, C, ...
       noteName, accidental, octave = re.search(r"^([A-Z])([#b]?)(-?\d{,2})$", noteId).groups()
-      self.octave = int(octave) + self.octave_offset if octave else 4
+      self.midi_octave = int(octave) + self.octave_offset if octave else 4
       self.accidental = accidental
       self.note = noteNames.index(noteName)
     elif midiNote is not None:
       idxInOctave = midiNote%12
       noteInfo = noteMap[idxInOctave]
       self.note = noteInfo[0]
-      self.octave = math.floor(midiNote/12) - 1 # midi octaves start at -1
+      self.midi_octave = math.floor(midiNote/12) - 1
       self.accidental = "#" if noteInfo[1] else ''
 
-  def get_noteIdxInOctave(self):
+  @property
+  def noteIdxInOctave(self):
     return reverseNoteMap[self.note]
-  noteIdxInOctave = property(get_noteIdxInOctave)
 
-  def get_midiNote(self):
-    return 12*(self.octave+1) + self.noteIdxInOctave + accidentalMap[self.accidental]
-  midiNote = property(get_midiNote)
+  @property
+  def midiNote(self):
+    return 12*(self.midi_octave+1) + self.noteIdxInOctave + accidentalMap[self.accidental]
+
+  @property
+  def noteName(self):
+    return noteNames[self.note]
+
+  @property
+  def octave(self):
+    return self.midi_octave - self.octave_offset
 
   def __repr__(self):
     noteName = noteNames[self.note]
-    return f"{noteName}{self.accidental}{self.octave-self.octave_offset}"
+    return f"{noteName}{self.accidental}{self.octave}"
 
   @staticmethod
   def makeFromUnknown(val, **kwargs):
     if (type(val) == int):
-      return Note(midiNote=val, **kwargs)
+      return BaseNote(midiNote=val, **kwargs)
     else:
       try:
-        return Note(midiNote=int(val))
+        return BaseNote(midiNote=int(val))
       except Exception as e:
-        return Note(noteId=val)
+        return BaseNote(noteId=val)
