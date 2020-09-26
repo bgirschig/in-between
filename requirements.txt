@@ -1,2 +1,4 @@
 python-rtmidi==1.4.5
 pyzmq==19.0.2
+gpiozero==1.5.1
+terminaltables==3.1.0
